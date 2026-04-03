@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detekce a blokace</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --accent-color: #ff4d4d;
+            --card-bg: #1e1e1e;
+            --border-color: #333;
+            --success-color: #4CAF50;
+            --primary-color: #2196F3;
+        }
+
+        body.light-mode {
+            --bg-color: #ffffff;
+            --text-color: #121212;
+            --accent-color: #d32f2f;
+            --card-bg: #f5f5f5;
+            --border-color: #ccc;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.5s, color 0.5s;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background-color: var(--border-color);
+            margin-bottom: 30px;
+        }
+
+        .event-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            animation: slideIn 0.5s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .event-card h3 {
+            color: var(--accent-color);
+            margin: 0 0 10px 0;
+            font-size: 1.3rem;
+        }
+
+        .event-card p {
+            margin: 5px 0;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .event-card .label {
+            font-weight: bold;
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        /* Loading animace */
+        .loader-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin: 40px 0;
+            flex-direction: column;
+        }
+
+        .loader-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .dots {
+            display: flex;
+            gap: 10px;
+        }
+
+        .dot {
+            width: 20px;
+            height: 20px;
+            background-color: var(--text-color);
+            border-radius: 50%;
+            animation: bounce 0.6s infinite alternate;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* Překryvná okna (Modals) */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 90%;
+            width: 500px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .modal-content p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            border: none;
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            margin: 5px;
+            color: white;
+        }
+
+        .btn:hover { opacity: 0.9; transform: scale(1.05); }
+        .btn-green { background-color: var(--success-color); }
+        .btn-red { background-color: var(--accent-color); }
+        .btn-blue { background-color: var(--primary-color); }
+
+        /* Stránka sekvence po kliknutí na "Ano" */
+        #working-page {
+            display: none;
+        }
+
+        .action-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 30px;
+        }
+
+        .action-item {
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+            animation: fadeIn 0.5s ease-out forwards;
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+
+        #final-summary-btn {
+            display: none;
+            margin-top: 30px;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        @keyframes slideIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes bounce {
+            to { transform: translateY(-15px); }
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 2rem; }
+            .btn { display: block; width: 100%; margin: 10px 0; }
+            .modal-content { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-page" class="container">
+        <h1>Detekce a blokace</h1>
+        <hr>
+        
+        <div id="events-container"></div>
+
+        <div id="loader" class="loader-container">
+            <div class="dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <div class="loader-text">Nezavírejte aplikaci, pracujeme na odpojení</div>
+        </div>
+    </div>
+
+    <div id="working-page" class="container">
+        <h1>CyberSecure pracuje...</h1>
+        <div id="working-loader" class="loader-container">
+            <div class="dots">
+                <div class="dot" style="background-color: var(--text-color);"></div>
+                <div class="dot" style="background-color: var(--text-color);"></div>
+                <div class="dot" style="background-color: var(--text-color);"></div>
+            </div>
+            <div class="loader-text">Nezavírejte aplikaci, pracujeme na odpojení útoku</div>
+        </div>
+        <ul id="action-list" class="action-list"></ul>
+        <button id="final-summary-btn" class="btn btn-blue" onclick="showSummaryModal()">Zobrazit souhrn</button>
+    </div>
+
+    <div id="warning-modal" class="modal-overlay">
+        <div class="modal-content">
+            <p id="warning-text"></p>
+            <div>
+                <button class="btn btn-green" onclick="handleYes()">Ano, udělejte to</button>
+                <button class="btn btn-red" onclick="handleNo()">Ne, vrátit se zpět (riskantní)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="summary-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>Souhrn</h2>
+            <p>Ahoj, tady je souhrn možná taky pan souhrn, s velký S, co myslíš, haha</p>
+            <button class="btn btn-blue" onclick="closeSummaryModal()">Zavřít</button>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // JEDNODUCHÁ KONFIGURACE ČASŮ ÚTOKŮ
+        // =========================================================================
+        // Zde si můžete libovolně přepsat časy. Skript si z nich sám vygeneruje 
+        // jak samotné čekání, tak i text "Čas: HH:MM, DD.MM.RRRR" zobrazený na kartě.
+        // Formát zadávání: "DD.MM.RRRR HH:MM"
+        // =========================================================================
+        const nastaveniCasu = [
+            "03.04.2026 20:52", // 1. položka
+            "03.04.2026 20:52", // 2. položka
+            "03.04.2026 20:53", // 3. položka
+            "03.04.2026 20:54", // 4. položka
+            "03.04.2026 20:55"  // 5. položka
+        ];
+
+        // Funkce pro převod zapsaného textu "DD.MM.RRRR HH:MM" na počítačový čas (milisekundy)
+        function parseCustomDate(dateString) {
+            const parts = dateString.split(' ');
+            const dateParts = parts[0].split('.');
+            const timeParts = parts[1].split(':');
+            const day = parseInt(dateParts[0], 10);
+            const month = parseInt(dateParts[1], 10) - 1; // Měsíce se indexují od nuly
+            const year = parseInt(dateParts[2], 10);
+            const hours = parseInt(timeParts[0], 10);
+            const minutes = parseInt(timeParts[1], 10);
+            return new Date(year, month, day, hours, minutes, 0).getTime();
+        }
+
+        // Funkce pro naformátování zpět do textu "HH:MM, D.M.RRRR" pro zobrazení
+        function formatToCardText(dateString) {
+            const parts = dateString.split(' ');
+            return `${parts[1]}, ${parts[0]}`; 
+        }
+
+        // Definice obsahu položek, časy se berou automaticky z `nastaveniCasu` výše
+        const initialEvents = [
+            { time: parseCustomDate(nastaveniCasu[0]), title: "Útok zablokován!", desc: "Pokus o přístup k aplikaci mBank, ČSOB Smart, ČSOB Smart klíč", timeStr: formatToCardText(nastaveniCasu[0]), source: "WIFI-CHATA", target: "Samsung Galaxy A14 uživatele Hana", shown: false },
+            { time: parseCustomDate(nastaveniCasu[1]), title: "Útok zablokován!", desc: "Pokus o přístup: plná kontrola nad zařízením", timeStr: formatToCardText(nastaveniCasu[1]), source: "WIFI-CHATA", target: "Samsung Galaxy A14 uživatele Hana", shown: false },
+            { time: parseCustomDate(nastaveniCasu[2]), title: "Útok zablokován!", desc: "Pokus o přístup k aplikaci mBank, ČSOB Smart, ČSOB Smart klíč", timeStr: formatToCardText(nastaveniCasu[2]), source: "WIFI-CHATA", target: "Samsung Galaxy A14 uživatele Hana", shown: false },
+            { time: parseCustomDate(nastaveniCasu[3]), title: "Útok zablokován!", desc: "Pokus o vzdálený přístup správy aplikací modifikace aplikací obsahující výraz _bank_", timeStr: formatToCardText(nastaveniCasu[3]), source: "WIFI-CHATA", target: "Samsung Galaxy A14 uživatele Hana", shown: false },
+            { time: parseCustomDate(nastaveniCasu[4]), title: "Útok zablokován!", desc: "Pokus o přístup k aplikaci mBank, ČSOB Smart, ČSOB Smart klíč", timeStr: formatToCardText(nastaveniCasu[4]), source: "WIFI-CHATA", target: "Samsung Galaxy A14 uživatele Hana", shown: false }
+        ];
+
+        let shownAttacksCount = 0;
+        let eventCheckInterval;
+        let infiniteAttackInterval;
+
+        // Vykreslení jedné karty
+        function renderEvent(eventData) {
+            const container = document.getElementById('events-container');
+            const card = document.createElement('div');
+            card.className = 'event-card';
+            card.innerHTML = `
+                <h3>${eventData.title}</h3>
+                <p><span class="label">Popis:</span> ${eventData.desc}</p>
+                <p><span class="label">Čas:</span> ${eventData.timeStr}</p>
+                <p><span class="label">Server původu:</span> ${eventData.source}</p>
+                <p><span class="label">Cíl:</span> ${eventData.target}</p>
+            `;
+            container.appendChild(card);
+            
+            shownAttacksCount++;
+
+            // Jakmile se ukáže násobek 5 (5, 10, 15...), schová se loader a ukáže modal
+            if (shownAttacksCount >= 5 && shownAttacksCount % 5 === 0) {
+                document.getElementById('loader').style.display = 'none';
+                updateAndShowWarningModal();
+            } else if (shownAttacksCount < 5) {
+                document.getElementById('loader').style.display = 'flex';
+            }
+        }
+
+        // Smyčka, která každou vteřinu kontroluje, zda nenastal čas
+        function checkEvents() {
+            const now = Date.now();
+            let allShown = true;
+            
+            initialEvents.forEach(ev => {
+                if (!ev.shown) {
+                    allShown = false;
+                    if (now >= ev.time) {
+                        ev.shown = true;
+                        renderEvent(ev);
+                    }
+                }
+            });
+
+            // Jakmile proběhne všech 5 prvotních útoků, vypínáme hlavní kontrolovací interval
+            if (allShown) {
+                clearInterval(eventCheckInterval);
+            }
+        }
+
+        // Start kontroly času
+        eventCheckInterval = setInterval(checkEvents, 1000);
+        checkEvents(); 
+
+        function updateAndShowWarningModal() {
+            const textEl = document.getElementById('warning-text');
+            textEl.innerHTML = `Proběhlo <b>${shownAttacksCount}</b> útoků ze stejného serveru. CyberSecure Vás může natvrdo izolovat od škodlivého serveru. Varování: CyberSecure má za cíl "dostat uživatele do bezpečí", kdy projde několik kroků od nejméně drtivých po fatální, dokud nějaký nezabere. Fatálním krokem je myšlen například krok "odstřelit škodlivý server". Je doporučeno pokračovat.`;
+            document.getElementById('warning-modal').classList.add('active');
+        }
+
+        // Tlačítko NE
+        function handleNo() {
+            document.getElementById('warning-modal').classList.remove('active');
+            document.getElementById('loader').style.display = 'flex';
+            
+            // Nastartuje nekonečné opakování 5. prvku každou minutu (60 000 ms), pokud už neběží
+            if (!infiniteAttackInterval) {
+                infiniteAttackInterval = setInterval(() => {
+                    renderEvent(initialEvents[4]);
+                }, 60000); 
+            }
+        }
+
+        // Data pro akce po zmáčknutí "ANO" (časy převedeny přímo na milisekundy)
+        const actionSequence = [
+            { text: "Zavření portu 8025", delay: 16000 },
+            { text: "Zavření portu 7569", delay: 12000 },
+            { text: "Zavření portu 7855", delay: 9000 },
+            { text: "Zavření portu 4445", delay: 29000 },
+            { text: "Přerušení komunikace", delay: 43000 },
+            { text: "CyberSecure se pokouší změnit tok komunikace", delay: 65000 },
+            { text: "CyberSecure upravuje obsah komunikace", delay: 16000 },
+            { text: "Pokus o odpojení", delay: 79000 },
+            { text: "Pokus o odpojení", delay: 43000 },
+            { text: "Přepnutí přístupového bodu", delay: 112000 },
+            { text: "Analýza serveru", delay: 60000 },
+            { text: "Hardware server mem", delay: 14000 },
+            { text: "Pokus o odpojení", delay: 11000 },
+            { text: "Odeslání deaktivačního kódu na server", delay: 28000 },
+            { text: "Aktivace deaktivačního kódu", delay: 71000 },
+            { text: "Odeslání deaktivačního kódu na server a pokus o vypnutí serveru", delay: 121000 },
+            { text: "Odeslání přetěžujícího kódu na server", delay: 34000 },
+            { text: "Odeslání makroviru na server", delay: 14000 },
+            { text: "Odesílám smrtící kód na server", delay: 62000 },
+            { text: "Odesílám soubor \"Fatalni_smrtici_kod_pro_odstreleni_serveru.exec\"", delay: 134000 },
+            { text: "Spouštím", delay: 15000 },
+            { text: "Please wait... Fatální smrtící kód pracuje a to trvá zpravidla pár minut...", delay: 1004000 },
+            { text: "Úspěšné! Server byl \"usmrcen\" způsobem \"recyklace\". Pokud je server připojen k elektrické síti, může dojít k jeho fatálnímu přehřívání, zkratu nebo zásahu! Doporučeno jej odpojit", delay: 0 }
+        ];
+
+        // Tlačítko ANO
+        async function handleYes() {
+            // Zastavení všech odpočtů
+            clearInterval(eventCheckInterval);
+            if (infiniteAttackInterval) clearInterval(infiniteAttackInterval);
+            
+            // Přechod na bílou stránku
+            document.getElementById('warning-modal').classList.remove('active');
+            document.getElementById('main-page').style.display = 'none';
+            document.body.classList.add('light-mode');
+            document.getElementById('working-page').style.display = 'block';
+
+            const listEl = document.getElementById('action-list');
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            // Spuštění iterace po krocích
+            for (let i = 0; i < actionSequence.length; i++) {
+                const action = actionSequence[i];
+                
+                if (action.delay > 0) {
+                    await sleep(action.delay);
+                }
+
+                const li = document.createElement('li');
+                li.className = 'action-item';
+                li.innerText = action.text;
+                listEl.appendChild(li);
+                
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+
+            document.getElementById('working-loader').style.display = 'none';
+            document.getElementById('final-summary-btn').style.display = 'block';
+        }
+
+        // Tlačítko na úplný konec (Souhrn)
+        function showSummaryModal() {
+            document.getElementById('summary-modal').classList.add('active');
+        }
+
+        function closeSummaryModal() {
+            document.getElementById('summary-modal').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
